@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Study Monitor</title>
+
+<style>
+body {
+  margin: 0;
+  background: #ffffff;
+  color: #222;
+  font-family: sans-serif;
+}
+
+/* 전체 레이아웃 */
+.container {
+  display: flex;
+  height: 100vh;
+}
+
+/* 왼쪽 (카메라) */
+.left {
+  width: 25%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+video, canvas {
+  width: 90%;
+  border-radius: 15px;
+  background: #000;
+}
+
+/* 오른쪽 (상태 이미지) */
+.right {
+  width: 75%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+#statusImg {
+  width: 90%;
+  max-height: 90%;
+  object-fit: contain;
+  border-radius: 20px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+}
+
+/* 상태 텍스트 */
+#status {
+  position: fixed;
+  bottom: 20px;
+  width: 100%;
+  text-align: center;
+  font-size: 24px;
+  font-weight: bold;
+}
+</style>
+</head>
+
+<body>
+
+<div class="container">
+  <div class="left">
+    <video id="video" autoplay playsinline></video>
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <div class="right">
+    <img id="statusImg" src="focus.gif">
+  </div>
+</div>
+
+<div id="status">focus...</div>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js"></script>
+
+<script>
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+
+const statusText = document.getElementById("status");
+const statusImg = document.getElementById("statusImg");
+
+let startTime = null;
+
+// 설정값
+const DIST_THRESHOLD = 0.15;
+const LOWER_Y = 0.6;
+const TIME_THRESHOLD = 3000;
+
+function distance(a, b) {
+  return Math.hypot(a.x - b.x, a.y - b.y);
+}
+
+const hands = new Hands({
+  locateFile: (file) => {
+    return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
+  }
+});
+
+hands.setOptions({
+  maxNumHands: 2,
+  minDetectionConfidence: 0.7,
+  minTrackingConfidence: 0.7
+});
+
+hands.onResults(results => {
+  canvas.width = video.videoWidth;
+  canvas.height = video.videoHeight;
+
+  ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+  let status = "focus";
+
+  if (results.multiHandLandmarks && results.multiHandLandmarks.length === 2) {
+    const hand1 = results.multiHandLandmarks[0][0];
+    const hand2 = results.multiHandLandmarks[1][0];
+
+    const dist = distance(hand1, hand2);
+
+    if (hand1.y > LOWER_Y && hand2.y > LOWER_Y) {
+      if (dist < DIST_THRESHOLD) {
+        if (!startTime) startTime = Date.now();
+        if (Date.now() - startTime > TIME_THRESHOLD) {
+          status = "distract";
+        }
+      } else {
+        startTime = null;
+      }
+    } else {
+      startTime = null;
+    }
+  } else {
+    startTime = null;
+  }
+
+  // 상태 표시
+  if (status === "distract") {
+    statusText.innerText = "!!";
+    statusImg.src = "warning.png";
+  } else {
+    statusText.innerText = "focus...";
+    statusImg.src = "focus.gif";
+  }
+});
+
+// 카메라 실행
+const camera = new Camera(video, {
+  onFrame: async () => {
+    await hands.send({image: video});
+  },
+  width: 640,
+  height: 480
+});
+
+camera.start();
+</script>
+
+</body>
+</html>
